@@ -41,5 +41,7 @@ export async function publishAd(adId) {
     if (out.status === 'posted') posted++;
     await db.from('ad_posts').upsert({ ad_id: ad.id, channel: ch, status: out.status, external_id: out.id || null, error: out.error || null }, { onConflict: 'ad_id,channel' });
   }
-  if (posted) await db.from('ads').update({ status: 'live', expires_at: new Date(Date.now() + P.days * 864e5).toISOString() }).eq('id', ad.id).eq('status', 'paid');
+  let end = Date.now() + P.days * 864e5;
+  if (ad.origin === 'trial' && ad.expires_at) end = Math.min(end, Date.parse(ad.expires_at));
+  if (posted) await db.from('ads').update({ status: 'live', expires_at: new Date(end).toISOString() }).eq('id', ad.id).eq('status', 'paid');
 }

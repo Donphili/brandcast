@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Brandcast – Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F4F2FF;--surface:#fff;--ink:#1A1740;--muted:#5B5886;--brand:#3B2BFF;--coral:#FF4F7B;--line:#DAD6F5;--ok:#0E8A5F;
+padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}
+@media (prefers-color-scheme:dark){:root{--bg:#110E30;--surface:#1B1745;--ink:#F2F0FF;--muted:#A9A5D6;--brand:#7F72FF;--line:#2E2A66;--ok:#4FD1A1}}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Figtree,system-ui,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque",Georgia,sans-serif;margin:0;letter-spacing:-.02em;line-height:1.1}
+h2{font-size:1.4rem;margin:34px 0 12px}
+.wrap{max-width:900px;margin:0 auto;padding:20px 20px 60px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;display:grid;gap:10px;margin-bottom:12px}
+.btn{border:0;border-radius:12px;padding:10px 16px;font:700 .95rem Figtree,sans-serif;cursor:pointer;background:var(--brand);color:#fff;text-decoration:none;display:inline-block}
+.btn.alt{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
+.btn.bad{background:var(--coral)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.muted{color:var(--muted);font-size:.92rem}
+.badge{padding:2px 10px;border-radius:999px;font-size:.82rem;font-weight:700;border:1px solid var(--line)}
+.badge.live{color:var(--ok)}
+img.t{width:84px;height:84px;object-fit:cover;border-radius:14px;border:1px solid var(--line)}
+.msg{min-height:1.4em;color:var(--coral);font-weight:500}.msg.good{color:var(--ok)}
+:focus-visible{outline:3px solid var(--coral);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="top"><h1>Admin</h1><div class="row"><a class="btn alt" href="app.html">Back to my ads</a><button class="btn alt" id="reload">Refresh</button></div></div>
+<p class="msg" id="m" role="status"></p>
+<div id="out"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+var C=window.BC,sb=supabase.createClient(C.supabaseUrl,C.anonKey),out=document.getElementById('out'),msg=document.getElementById('m');
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function say(t,good){msg.textContent=t;msg.className='msg'+(good?' good':'');}
+function safeUrl(u){return /^https:\/\//.test(u||'')?u:'';}
+function when(d){return d?new Date(d).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'–';}
+async function call(path,body){
+  var s=(await sb.auth.getSession()).data.session;if(!s)throw new Error('Please sign in first.');
+  var r=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.access_token},body:body?JSON.stringify(body):undefined});
+  var j=await r.json().catch(function(){return{};});
+  if(!r.ok)throw new Error(j.error||'Something went wrong.');
+  return j;
+}
+function adCard(a,review){
+  var imgs=[a.logo_url].concat(a.photo_urls||[]).map(safeUrl).filter(Boolean).slice(0,4);
+  var vid=safeUrl(a.video_url);
+  return '<div class="card"><div class="row" style="justify-content:space-between"><h3>'+esc(a.business_name)+'</h3><span class="badge '+(a.status==='live'?'live':'')+'">'+esc(a.status.replace('_',' '))+(a.origin==='trial'?' · trial':'')+'</span></div>'
+  +'<div class="muted">By '+esc(a.owner)+' · created '+when(a.created_at)+(a.expires_at?' · ends '+when(a.expires_at):'')+'</div>'
+  +'<div>'+esc(a.description)+'</div>'
+  +'<div class="muted">Phone: '+esc(a.phone)+' · Email: '+esc(a.email)+' · Web: '+esc(a.website)+'</div>'
+  +'<div class="muted">Audience: '+esc(a.audience)+' · Platforms: '+esc((a.channels||[]).join(', '))+'</div>'
+  +(imgs.length?'<div class="row">'+imgs.map(function(u){return '<img class="t" alt="" src="'+esc(u)+'">';}).join('')+'</div>':'')
+  +(vid?'<video src="'+esc(vid)+'" controls preload="metadata" style="max-width:100%;border-radius:14px"></video>':'')
+  +'<div class="row">'+(review?'<button class="btn" data-a="approve" data-id="'+a.id+'">Approve and post</button><button class="btn bad" data-a="reject" data-id="'+a.id+'">Reject</button>':'')
+  +((a.status==='live'||a.status==='paid')?'<button class="btn alt" data-a="takedown" data-id="'+a.id+'">Take down</button>':'')+'</div></div>';
+}
+function render(d){
+  var pending=d.ads.filter(function(a){return a.status==='pending_review';});
+  var others=d.ads.filter(function(a){return a.status!=='pending_review';});
+  var now=Date.now();
+  out.innerHTML='<h2>Waiting for review ('+pending.length+')</h2>'+(pending.length?pending.map(function(a){return adCard(a,true);}).join(''):'<p class="muted">Nothing to review.</p>')
+  +'<h2>Users ('+d.users.length+')</h2>'+d.users.map(function(u){
+    var left=u.free_until?Math.ceil((Date.parse(u.free_until)-now)/864e5):0;
+    return '<div class="card"><div class="row" style="justify-content:space-between"><b>'+esc(u.email)+(u.is_admin?' (admin)':'')+'</b><span class="muted">Joined '+when(u.created_at)+'</span></div>'
+    +'<div>'+(left>0?'Free access: <b>'+left+' day'+(left===1?'':'s')+' left</b> (until '+when(u.free_until)+')':'<b>Free access ended</b> on '+when(u.free_until))+'</div>'
+    +'<div class="row"><button class="btn" data-a="set_free_days" data-days="14" data-u="'+u.id+'">Reactivate 14 days</button><button class="btn alt" data-a="set_free_days" data-days="30" data-u="'+u.id+'">30 days</button><button class="btn alt" data-a="set_free_days" data-days="0" data-u="'+u.id+'">End free access now</button></div></div>';}).join('')
+  +'<h2>All other ads ('+others.length+')</h2>'+(others.length?others.map(function(a){return adCard(a,false);}).join(''):'<p class="muted">No ads yet.</p>');
+  out.querySelectorAll('button[data-a]').forEach(function(b){b.onclick=async function(){
+    var a=b.dataset.a;
+    if(a==='reject'&&!confirm('Reject this ad?'))return;
+    if(a==='takedown'&&!confirm('Take this ad down? Posts already on social media stay there.'))return;
+    if(a==='set_free_days'&&b.dataset.days==='0'&&!confirm('End free access for this user now?'))return;
+    b.disabled=true;say('Working…',true);
+    try{await call('/api/admin/action',{action:a,adId:b.dataset.id,userId:b.dataset.u,days:b.dataset.days});say('Done.',true);load();}
+    catch(e){say(e.message);b.disabled=false;}
+  };});
+}
+async function load(){
+  try{render(await call('/api/admin/overview'));}
+  catch(e){out.innerHTML='';say(e.message==='Admins only.'?'This page is for the site owner only.':e.message);}
+}
+document.getElementById('reload').onclick=load;
+load();
+})();
+</script>
+</body>
+</html>

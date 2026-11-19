@@ -12,6 +12,9 @@ export const PLANS = {
   everywhere: { usd: 20, days: 90, channels: 12 },
 };
 
+// Plan whose limits apply to free-trial ads.
+export const TRIAL_PLAN = 'growth';
+
 export async function userFrom(req) {
   const token = (req.headers.authorization || '').replace(/^Bearer /, '');
   if (!token) return null;
@@ -50,4 +53,12 @@ export async function paypalToken() {
     body: 'grant_type=client_credentials',
   });
   return (await r.json()).access_token;
+}
+
+// Returns the user only if their profile has is_admin = true (set by the site owner in the database).
+export async function adminFrom(req) {
+  const user = await userFrom(req);
+  if (!user) return null;
+  const { data } = await db.from('profiles').select('is_admin').eq('id', user.id).single();
+  return data?.is_admin ? user : null;
 }

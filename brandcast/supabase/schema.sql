@@ -89,3 +89,16 @@ values ('ad-media', 'ad-media', true, 52428800) on conflict (id) do nothing;
 create policy "upload to own folder" on storage.objects for insert to authenticated
   with check (bucket_id = 'ad-media' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "public read ad media" on storage.objects for select using (bucket_id = 'ad-media');
+
+-- ---- Added later: free trial, admin and review (already applied to the brandcast project) ----
+alter table profiles add column if not exists is_admin boolean not null default false;
+alter table profiles add column if not exists free_until timestamptz not null default (now() + interval '14 days');
+alter table ads add column if not exists origin text not null default 'paid' check (origin in ('paid','trial'));
+alter table ads drop constraint if exists ads_status_check;
+alter table ads add constraint ads_status_check check (status in ('draft','awaiting_payment','pending_review','rejected','paid','live','expired'));
+-- Users can read their own profile but never change it (stops self-granted admin or longer trials).
+drop policy if exists "own profile" on profiles;
+create policy "read own profile" on profiles for select using (id = auth.uid());
+revoke insert, update, delete on profiles from anon, authenticated;
+-- To make someone an admin (run by the owner only):
+--   update public.profiles set is_admin = true where id = (select id from auth.users where email = 'owner@example.com');

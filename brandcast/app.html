@@ -65,6 +65,18 @@ var EYE='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="cur
 var EYE_OFF='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19c-6.5 0-10-7-10-7a18.5 18.5 0 0 1 4.06-5.06M9.9 4.24A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24M1 1l22 22"/></svg>';
 function pwBox(id,ac){return '<div class="pw"><input id="'+id+'" type="password" minlength="8" autocomplete="'+ac+'" required><button type="button" class="eye" data-eye="'+id+'" aria-label="Show password" aria-pressed="false">'+EYE+'</button></div>';}
 function bindEyes(){app.querySelectorAll('[data-eye]').forEach(function(b){b.onclick=function(){var i=document.getElementById(b.dataset.eye),show=i.type==='password';i.type=show?'text':'password';b.innerHTML=show?EYE_OFF:EYE;b.setAttribute('aria-label',show?'Hide password':'Show password');b.setAttribute('aria-pressed',show?'true':'false');i.focus();};});}
+var me=null;
+async function loadMe(){var r=await sb.from('profiles').select('free_until,is_admin').maybeSingle();me=r.data||null;}
+function trialLeft(){return me&&Date.parse(me.free_until)>Date.now()?Math.ceil((Date.parse(me.free_until)-Date.now())/864e5):0;}
+function trialBanner(){
+  if(!me)return '';var d=trialLeft();
+  return '<div class="card" style="margin:0 0 6px">'+(d?'<span><b>Free trial:</b> '+d+' day'+(d===1?'':'s')+' left. You can publish ads free until '+new Date(me.free_until).toLocaleDateString()+'.</span>':'<span><b>Your free trial has ended.</b> Choose a plan to keep advertising.</span>')+'</div>';
+}
+function freeBlock(){
+  var d=trialLeft();
+  if(d)return '<div style="display:grid;gap:8px"><h2>Free trial</h2><p>You have '+d+' free day'+(d===1?'':'s')+' left. Free ads are reviewed before they go out, and they end when your trial ends.</p><button class="btn" id="freebtn">Publish free</button></div><hr style="border:0;border-top:1px solid var(--line);width:100%">';
+  return me?'<p style="color:var(--muted)">Your free trial has ended. Pay below to publish.</p>':'';
+}
 function say(el,t,good){el.textContent=t;el.className='msg'+(good?' good':'');}
 async function token(){var r=await sb.auth.getSession();return r.data.session&&r.data.session.access_token;}
 async function api(path,body){
@@ -121,11 +133,12 @@ function resetView(){
 /* ---------- Dashboard ---------- */
 async function dashView(note){
   $('#out').hidden=false;current=null;aiLogo=null;
+  await loadMe();
   var r=await sb.from('ads').select('*').order('created_at',{ascending:false});
   var ads=r.data||[];
-  app.innerHTML='<div class="row" style="justify-content:space-between;margin-top:8px"><h1>Your ads</h1><button class="btn" id="new">New ad</button></div><p class="msg good" id="n">'+esc(note||'')+'</p>'
+  app.innerHTML='<div class="row" style="justify-content:space-between;margin-top:8px"><h1>Your ads</h1><button class="btn" id="new">New ad</button></div><p class="msg good" id="n">'+esc(note||'')+'</p>'+trialBanner()+(me&&me.is_admin?'<p><a class="btn alt" href="admin.html" style="text-decoration:none;display:inline-block">Admin</a></p>':'')
   +(ads.length?ads.map(function(a){var unpaid=a.status==='draft'||a.status==='awaiting_payment';
-    return '<div class="card ad"><div><h3>'+esc(a.business_name)+'</h3><span class="badge '+(a.status==='live'?'live':'')+'">'+({draft:'Draft',awaiting_payment:'Awaiting payment',paid:'Paid, publishing',live:'Live',expired:'Expired'}[a.status]||a.status)+'</span></div>'
+    return '<div class="card ad"><div><h3>'+esc(a.business_name)+'</h3><span class="badge '+(a.status==='live'?'live':'')+'">'+({draft:'Draft',awaiting_payment:'Awaiting payment',pending_review:'Waiting for review',rejected:'Not approved',paid:'Approved, publishing',live:'Live',expired:'Ended'}[a.status]||a.status)+'</span></div>'
     +(unpaid?'<div class="row"><button class="btn alt" data-e="'+a.id+'">Edit</button><button class="btn" data-p="'+a.id+'">Pay and publish</button></div>':'')+'</div>';}).join('')
   :'<div class="card"><p>You have no ads yet. Create your first one in a few minutes.</p></div>');
   $('#new').onclick=function(){editView(null);};
@@ -186,7 +199,7 @@ function payView(){
   $('#out').hidden=false;
   app.innerHTML='<h1 style="margin-top:8px">Choose a plan</h1><div class="card"><div class="plans">'
   +Object.keys(PLANS).map(function(k){return '<div class="plan '+(k===plan?'on':'')+'" data-k="'+k+'" role="button" tabindex="0"><b>$'+PLANS[k].usd+'</b><span>'+PLANS[k].name+'</span><small style="color:var(--muted)">'+PLANS[k].info+'</small></div>';}).join('')
-  +'</div></div><div class="card"><h2>Pay with</h2><p class="msg" id="m"></p>'
+  +'</div></div><div class="card">'+freeBlock()+'<h2>Pay with</h2><p class="msg" id="m"></p>'
   +'<div id="pp"></div>'
   +'<button class="btn pm" id="opay"><span class="tag" style="background:#00B876">OPay</span> Pay in Naira</button>'
   +'<button class="btn alt pm disabled" disabled><span class="tag" style="background:#E0A100">WAMD</span> Coming soon</button>'
@@ -196,6 +209,12 @@ function payView(){
   $('#opay').onclick=async function(){
     var m=$('#m');this.disabled=true;say(m,'Opening OPay…',true);
     try{var j=await api('/api/opay/init',{adId:current.id,plan:plan});location.href=j.url;}catch(e){say(m,e.message);this.disabled=false;}
+  };
+  var fb=$('#freebtn');
+  if(fb)fb.onclick=async function(){
+    var m=$('#m');this.disabled=true;say(m,'Submitting…',true);
+    try{await api('/api/ads/free',{adId:current.id});dashView('Submitted. Free ads are reviewed before they go out. It will show as Live once approved.');}
+    catch(e){say(m,e.message);this.disabled=false;}
   };
   loadPayPal();
 }
