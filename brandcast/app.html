@@ -53,6 +53,7 @@ textarea{min-height:110px;resize:vertical}
 <script src="config.js"></script>
 <script>
 (function(){
+var recovering=/type=recovery/.test(location.hash);
 var C=window.BC,sb=supabase.createClient(C.supabaseUrl,C.anonKey),app=document.getElementById('app');
 var CH=['Facebook','Instagram','TikTok','YouTube','X','LinkedIn','WhatsApp','Snapchat','Pinterest','Telegram','Reddit','Threads'];
 var PLANS={starter:{usd:5,name:'Starter',info:'2 platforms · 7 days'},growth:{usd:10,name:'Growth',info:'5 platforms · 30 days'},everywhere:{usd:20,name:'Everywhere',info:'All platforms · 90 days'}};
@@ -74,8 +75,17 @@ function authView(mode){
   app.innerHTML='<div class="card"><h1>'+(mode==='in'?'Welcome back':'Create your account')+'</h1><div class="tabs"><button class="btn '+(mode==='in'?'':'alt')+'" data-m="in">Sign in</button><button class="btn '+(mode==='up'?'':'alt')+'" data-m="up">Sign up</button></div>'
   +'<label>Email<input id="em" type="email" autocomplete="email" required></label>'
   +'<label>Password<input id="pw" type="password" minlength="8" autocomplete="'+(mode==='in'?'current-password':'new-password')+'" required><small>At least 8 characters</small></label>'
-  +'<button class="btn" id="go">'+(mode==='in'?'Sign in':'Create account')+'</button><p class="msg" id="m"></p></div>';
+  +'<button class="btn" id="go">'+(mode==='in'?'Sign in':'Create account')+'</button>'+(mode==='in'?'<button type="button" class="btn alt" id="forgot">Forgot password?</button>':'')+'<p class="msg" id="m"></p></div>';
   app.querySelectorAll('[data-m]').forEach(function(b){b.onclick=function(){authView(b.dataset.m);};});
+  var fg=$('#forgot');
+  if(fg)fg.onclick=async function(){
+    var m=$('#m'),email=$('#em').value.trim();
+    if(!email)return say(m,'Type your email above first, then click Forgot password.');
+    say(m,'Sending…',true);
+    var r=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+'/app.html'});
+    if(r.error)return say(m,r.error.message);
+    say(m,'If that email has an account, a reset link is on its way. Check your inbox and spam folder.',true);
+  };
   $('#go').onclick=async function(){
     var m=$('#m'),email=$('#em').value.trim(),pw=$('#pw').value;
     if(!email||pw.length<8)return say(m,'Enter your email and a password of at least 8 characters.');
@@ -83,6 +93,21 @@ function authView(mode){
     var r=mode==='in'?await sb.auth.signInWithPassword({email:email,password:pw}):await sb.auth.signUp({email:email,password:pw});
     if(r.error)return say(m,r.error.message);
     if(mode==='up'&&!r.data.session)return say(m,'Check your email to confirm your account, then sign in.',true);
+  };
+}
+
+/* ---------- Set a new password (after the email link) ---------- */
+function resetView(){
+  $('#out').hidden=true;
+  app.innerHTML='<div class="card"><h1>Choose a new password</h1><label>New password<input id="np" type="password" minlength="8" autocomplete="new-password"><small>At least 8 characters</small></label><button class="btn" id="sv">Save password</button><p class="msg" id="m"></p></div>';
+  $('#sv').onclick=async function(){
+    var m=$('#m'),p=$('#np').value;
+    if(p.length<8)return say(m,'Use at least 8 characters.');
+    say(m,'Saving…',true);
+    var r=await sb.auth.updateUser({password:p});
+    if(r.error)return say(m,r.error.message);
+    recovering=false;history.replaceState(null,'',location.pathname);
+    dashView('Password changed. You are signed in.');
   };
 }
 
@@ -181,9 +206,10 @@ function loadPayPal(){
 
 /* ---------- Start ---------- */
 $('#out').onclick=function(){sb.auth.signOut();};
-sb.auth.onAuthStateChange(function(ev,s){if(ev==='SIGNED_OUT')authView();});
+sb.auth.onAuthStateChange(function(ev,s){if(ev==='SIGNED_OUT')authView();if(ev==='PASSWORD_RECOVERY'){recovering=true;resetView();}});
 (async function(){
   var s=(await sb.auth.getSession()).data.session;
+  if(recovering&&s)return resetView();
   if(!s)return authView();
   var ref=new URLSearchParams(location.search).get('opay');
   if(ref){
@@ -193,7 +219,7 @@ sb.auth.onAuthStateChange(function(ev,s){if(ev==='SIGNED_OUT')authView();});
   }
   dashView();
 })();
-sb.auth.onAuthStateChange(function(ev){if(ev==='SIGNED_IN')dashView();});
+sb.auth.onAuthStateChange(function(ev){if(ev==='SIGNED_IN'&&!recovering)dashView();});
 })();
 </script>
 </body>
