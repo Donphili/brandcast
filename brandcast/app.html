@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brandcast – Your ads</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F4F2FF;--surface:#fff;--ink:#1A1740;--muted:#5B5886;--brand:#3B2BFF;--coral:#FF4F7B;--line:#DAD6F5;--ok:#0E8A5F;
+padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}
+@media (prefers-color-scheme:dark){:root{--bg:#110E30;--surface:#1B1745;--ink:#F2F0FF;--muted:#A9A5D6;--brand:#7F72FF;--line:#2E2A66;--ok:#4FD1A1}}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 Figtree,system-ui,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque",Georgia,sans-serif;margin:0;letter-spacing:-.02em;line-height:1.1}
+h1{font-size:clamp(1.8rem,5vw,2.6rem)}h2{font-size:1.5rem}
+.wrap{max-width:760px;margin:0 auto;padding:0 20px 60px}
+header{display:flex;justify-content:space-between;align-items:center;padding:20px;max-width:760px;margin:0 auto}
+.logo{font:800 1.4rem "Bricolage Grotesque",sans-serif;text-decoration:none;color:inherit}
+.logo i{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--coral);margin-left:3px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:24px;display:grid;gap:14px;margin-top:18px}
+label{display:grid;gap:6px;font-weight:700;font-size:.95rem}
+label small{font-weight:400;color:var(--muted)}
+input,textarea,select{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:500 1rem Figtree,sans-serif}
+textarea{min-height:110px;resize:vertical}
+:focus-visible{outline:3px solid var(--coral);outline-offset:2px}
+.btn{border:0;border-radius:14px;padding:13px 22px;font:700 1rem Figtree,sans-serif;cursor:pointer;background:var(--brand);color:#fff}
+.btn.alt{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.msg{min-height:1.4em;color:var(--coral);font-weight:500}.msg.good{color:var(--ok)}
+.tabs{display:flex;gap:8px}.tabs button{flex:1}
+.chs{display:flex;flex-wrap:wrap;gap:8px}
+.chs label{display:flex;align-items:center;gap:8px;font-weight:500;padding:8px 14px;border:1px solid var(--line);border-radius:999px;cursor:pointer}
+.chs input{width:auto}
+.ad{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.badge{padding:3px 12px;border-radius:999px;font-size:.85rem;font-weight:700;background:var(--bg);border:1px solid var(--line)}
+.badge.live{color:var(--ok)}
+.plans{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.plan{border:2px solid var(--line);border-radius:18px;padding:16px;cursor:pointer;display:grid;gap:2px}
+.plan.on{border-color:var(--brand)}
+.plan b{font:800 1.8rem "Bricolage Grotesque",sans-serif}
+.prev{width:96px;height:96px;border-radius:18px;object-fit:cover;border:1px solid var(--line)}
+.pm{display:flex;align-items:center;gap:10px;justify-content:center;width:100%}
+.pm.disabled{opacity:.5;cursor:not-allowed}
+.tag{padding:2px 10px;border-radius:8px;font:800 .85rem Figtree,sans-serif;color:#fff}
+</style>
+</head>
+<body>
+<header><a class="logo" href="/">Brandcast<i></i></a><button class="btn alt" id="out" hidden>Sign out</button></header>
+<main class="wrap" id="app"></main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+var C=window.BC,sb=supabase.createClient(C.supabaseUrl,C.anonKey),app=document.getElementById('app');
+var CH=['Facebook','Instagram','TikTok','YouTube','X','LinkedIn','WhatsApp','Snapchat','Pinterest','Telegram','Reddit','Threads'];
+var PLANS={starter:{usd:5,name:'Starter',info:'2 platforms · 7 days'},growth:{usd:10,name:'Growth',info:'5 platforms · 30 days'},everywhere:{usd:20,name:'Everywhere',info:'All platforms · 90 days'}};
+var MAX_VIDEO=50*1024*1024,current=null,aiLogo=null,plan='growth';
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function $(s,r){return (r||document).querySelector(s);}
+function say(el,t,good){el.textContent=t;el.className='msg'+(good?' good':'');}
+async function token(){var r=await sb.auth.getSession();return r.data.session&&r.data.session.access_token;}
+async function api(path,body){
+  var r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await token()},body:JSON.stringify(body)});
+  var j=await r.json().catch(function(){return{};});
+  if(!r.ok)throw new Error(j.error||'Something went wrong. Try again.');
+  return j;
+}
+
+/* ---------- Sign in / sign up ---------- */
+function authView(mode){
+  mode=mode||'in';$('#out').hidden=true;
+  app.innerHTML='<div class="card"><h1>'+(mode==='in'?'Welcome back':'Create your account')+'</h1><div class="tabs"><button class="btn '+(mode==='in'?'':'alt')+'" data-m="in">Sign in</button><button class="btn '+(mode==='up'?'':'alt')+'" data-m="up">Sign up</button></div>'
+  +'<label>Email<input id="em" type="email" autocomplete="email" required></label>'
+  +'<label>Password<input id="pw" type="password" minlength="8" autocomplete="'+(mode==='in'?'current-password':'new-password')+'" required><small>At least 8 characters</small></label>'
+  +'<button class="btn" id="go">'+(mode==='in'?'Sign in':'Create account')+'</button><p class="msg" id="m"></p></div>';
+  app.querySelectorAll('[data-m]').forEach(function(b){b.onclick=function(){authView(b.dataset.m);};});
+  $('#go').onclick=async function(){
+    var m=$('#m'),email=$('#em').value.trim(),pw=$('#pw').value;
+    if(!email||pw.length<8)return say(m,'Enter your email and a password of at least 8 characters.');
+    say(m,'One moment…',true);
+    var r=mode==='in'?await sb.auth.signInWithPassword({email:email,password:pw}):await sb.auth.signUp({email:email,password:pw});
+    if(r.error)return say(m,r.error.message);
+    if(mode==='up'&&!r.data.session)return say(m,'Check your email to confirm your account, then sign in.',true);
+  };
+}
+
+/* ---------- Dashboard ---------- */
+async function dashView(note){
+  $('#out').hidden=false;current=null;aiLogo=null;
+  var r=await sb.from('ads').select('*').order('created_at',{ascending:false});
+  var ads=r.data||[];
+  app.innerHTML='<div class="row" style="justify-content:space-between;margin-top:8px"><h1>Your ads</h1><button class="btn" id="new">New ad</button></div><p class="msg good" id="n">'+esc(note||'')+'</p>'
+  +(ads.length?ads.map(function(a){var unpaid=a.status==='draft'||a.status==='awaiting_payment';
+    return '<div class="card ad"><div><h3>'+esc(a.business_name)+'</h3><span class="badge '+(a.status==='live'?'live':'')+'">'+({draft:'Draft',awaiting_payment:'Awaiting payment',paid:'Paid, publishing',live:'Live',expired:'Expired'}[a.status]||a.status)+'</span></div>'
+    +(unpaid?'<div class="row"><button class="btn alt" data-e="'+a.id+'">Edit</button><button class="btn" data-p="'+a.id+'">Pay and publish</button></div>':'')+'</div>';}).join('')
+  :'<div class="card"><p>You have no ads yet. Create your first one in a few minutes.</p></div>');
+  $('#new').onclick=function(){editView(null);};
+  app.querySelectorAll('[data-e]').forEach(function(b){b.onclick=function(){editView(ads.find(function(a){return a.id===b.dataset.e;}));};});
+  app.querySelectorAll('[data-p]').forEach(function(b){b.onclick=function(){current=ads.find(function(a){return a.id===b.dataset.p;});payView();};});
+}
+
+/* ---------- Create / edit ad ---------- */
+function editView(ad){
+  current=ad;aiLogo=null;ad=ad||{};var sel=ad.channels||[];
+  app.innerHTML='<h1 style="margin-top:8px">'+(ad.id?'Edit your ad':'Tell us about your business')+'</h1><form class="card" id="f">'
+  +'<label>Business name<input name="business_name" maxlength="60" required value="'+esc(ad.business_name)+'"></label>'
+  +'<label>What do you offer?<small>Describe your business in a few sentences.</small><textarea name="description" maxlength="600">'+esc(ad.description)+'</textarea></label>'
+  +'<label>Phone or WhatsApp<input name="phone" value="'+esc(ad.phone)+'"></label>'
+  +'<label>Email<input name="email" type="email" value="'+esc(ad.email)+'"></label>'
+  +'<label>Website<input name="website" value="'+esc(ad.website)+'"></label>'
+  +'<label>Who do you want to reach?<small>For example: families in Kuwait City, or students in Lagos.</small><input name="audience" value="'+esc(ad.audience)+'"></label>'
+  +'<div><b>Where should it appear?</b><div class="chs" style="margin-top:8px">'+CH.map(function(c){return '<label><input type="checkbox" name="ch" value="'+c+'"'+(sel.indexOf(c)>-1?' checked':'')+'>'+c+'</label>';}).join('')+'</div><small style="color:var(--muted)">Starter posts to 2, Growth to 5, Everywhere to all. Pick in order of importance.</small></div>'
+  +'<div><b>Logo</b><div class="row" style="margin-top:8px"><img class="prev" id="lp" alt="" '+(ad.logo_url?'src="'+esc(ad.logo_url)+'"':'hidden')+'><div style="display:grid;gap:8px"><input type="file" id="logo" accept="image/*"><button type="button" class="btn alt" id="ai">Make a 3D logo with AI</button></div></div></div>'
+  +'<label>Photos<small>Up to 5 images.</small><input type="file" id="photos" accept="image/*" multiple></label>'
+  +'<label>Video<small>One video, up to 1 minute and 50 MB.</small><input type="file" id="video" accept="video/*"></label>'
+  +'<p class="msg" id="m"></p><div class="row"><button class="btn" id="save">Save and continue</button><button type="button" class="btn alt" id="cancel">Cancel</button></div></form>';
+  $('#cancel').onclick=function(){dashView();};
+  $('#logo').onchange=function(e){var f=e.target.files[0];if(f){aiLogo=null;$('#lp').src=URL.createObjectURL(f);$('#lp').hidden=false;}};
+  $('#ai').onclick=async function(){
+    var m=$('#m'),n=$('#f').business_name.value.trim();if(!n)return say(m,'Enter your business name first.');
+    this.disabled=true;say(m,'Creating your 3D logo. This takes about 20 seconds…',true);
+    try{var j=await api('/api/logo/generate',{business_name:n});aiLogo=j.url;$('#logo').value='';$('#lp').src=j.url;$('#lp').hidden=false;say(m,'Logo ready. Click again for a new one.',true);}
+    catch(e){say(m,e.message);}this.disabled=false;
+  };
+  $('#f').onsubmit=async function(e){
+    e.preventDefault();var f=e.target,m=$('#m'),btn=$('#save');
+    var chans=[].slice.call(f.querySelectorAll('[name=ch]:checked')).map(function(x){return x.value;});
+    if(!chans.length)return say(m,'Choose at least one platform.');
+    var photos=[].slice.call($('#photos').files);if(photos.length>5)return say(m,'Choose up to 5 photos.');
+    var video=$('#video').files[0];
+    if(video){if(video.size>MAX_VIDEO)return say(m,'The video is over 50 MB.');if(!await videoOk(video))return say(m,'The video must be 1 minute or shorter.');}
+    btn.disabled=true;say(m,'Saving…',true);
+    try{
+      var uid=(await sb.auth.getUser()).data.user.id;
+      var row={business_name:f.business_name.value.trim(),description:f.description.value.trim(),phone:f.phone.value.trim(),email:f.email.value.trim(),website:f.website.value.trim(),audience:f.audience.value.trim(),channels:chans};
+      var res=ad.id?await sb.from('ads').update(row).eq('id',ad.id).select().single():await sb.from('ads').insert(Object.assign({user_id:uid},row)).select().single();
+      if(res.error)throw res.error;var saved=res.data,patch={},base=uid+'/'+saved.id+'/';
+      async function up(file,name){var p=base+Date.now()+'-'+name.replace(/[^\w.\-]/g,'_');var r=await sb.storage.from('ad-media').upload(p,file,{contentType:file.type});if(r.error)throw r.error;return sb.storage.from('ad-media').getPublicUrl(p).data.publicUrl;}
+      var lf=$('#logo').files[0];
+      if(aiLogo)patch.logo_url=aiLogo;else if(lf)patch.logo_url=await up(lf,lf.name);
+      if(photos.length)patch.photo_urls=await Promise.all(photos.map(function(p){return up(p,p.name);}));
+      if(video)patch.video_url=await up(video,video.name);
+      if(Object.keys(patch).length){var u=await sb.from('ads').update(patch).eq('id',saved.id).select().single();if(u.error)throw u.error;saved=u.data;}
+      current=saved;payView();
+    }catch(err){say(m,err.message||'Could not save. Try again.');btn.disabled=false;}
+  };
+}
+function videoOk(file){return new Promise(function(ok){var v=document.createElement('video');v.preload='metadata';v.onloadedmetadata=function(){URL.revokeObjectURL(v.src);ok(v.duration<=61);};v.onerror=function(){ok(false);};v.src=URL.createObjectURL(file);});}
+
+/* ---------- Choose plan and pay ---------- */
+function payView(){
+  $('#out').hidden=false;
+  app.innerHTML='<h1 style="margin-top:8px">Choose a plan</h1><div class="card"><div class="plans">'
+  +Object.keys(PLANS).map(function(k){return '<div class="plan '+(k===plan?'on':'')+'" data-k="'+k+'" role="button" tabindex="0"><b>$'+PLANS[k].usd+'</b><span>'+PLANS[k].name+'</span><small style="color:var(--muted)">'+PLANS[k].info+'</small></div>';}).join('')
+  +'</div></div><div class="card"><h2>Pay with</h2><p class="msg" id="m"></p>'
+  +'<div id="pp"></div>'
+  +'<button class="btn pm" id="opay"><span class="tag" style="background:#00B876">OPay</span> Pay in Naira</button>'
+  +'<button class="btn alt pm disabled" disabled><span class="tag" style="background:#E0A100">WAMD</span> Coming soon</button>'
+  +'<button class="btn alt" id="back" style="justify-self:start">Back</button></div>';
+  app.querySelectorAll('.plan').forEach(function(p){p.onclick=function(){plan=p.dataset.k;app.querySelectorAll('.plan').forEach(function(x){x.classList.toggle('on',x===p);});};});
+  $('#back').onclick=function(){dashView();};
+  $('#opay').onclick=async function(){
+    var m=$('#m');this.disabled=true;say(m,'Opening OPay…',true);
+    try{var j=await api('/api/opay/init',{adId:current.id,plan:plan});location.href=j.url;}catch(e){say(m,e.message);this.disabled=false;}
+  };
+  loadPayPal();
+}
+function loadPayPal(){
+  function draw(){
+    window.paypal.Buttons({
+      createOrder:function(){return api('/api/paypal/create',{adId:current.id,plan:plan}).then(function(j){return j.orderId;});},
+      onApprove:function(d){return api('/api/paypal/capture',{orderId:d.orderID}).then(function(){dashView('Payment received. Your ad is being published.');});},
+      onError:function(e){say($('#m'),'PayPal could not complete the payment. Try again.');}
+    }).render('#pp');
+  }
+  if(window.paypal)return draw();
+  var s=document.createElement('script');s.src='https://www.paypal.com/sdk/js?client-id='+encodeURIComponent(C.paypalClientId)+'&currency=USD';s.onload=draw;document.head.appendChild(s);
+}
+
+/* ---------- Start ---------- */
+$('#out').onclick=function(){sb.auth.signOut();};
+sb.auth.onAuthStateChange(function(ev,s){if(ev==='SIGNED_OUT')authView();});
+(async function(){
+  var s=(await sb.auth.getSession()).data.session;
+  if(!s)return authView();
+  var ref=new URLSearchParams(location.search).get('opay');
+  if(ref){
+    history.replaceState(null,'',location.pathname);
+    try{var j=await api('/api/opay/verify',{reference:ref});return dashView(j.status==='paid'?'Payment received. Your ad is being published.':'We have not received your payment yet. It will update here once OPay confirms it.');}
+    catch(e){return dashView('');}
+  }
+  dashView();
+})();
+sb.auth.onAuthStateChange(function(ev){if(ev==='SIGNED_IN')dashView();});
+})();
+</script>
+</body>
+</html>

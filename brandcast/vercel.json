@@ -1,0 +1,4 @@
+{
+  "functions": { "api/logo/generate.js": { "maxDuration": 60 } },
+  "crons": [{ "path": "/api/publish/run", "schedule": "0 6 * * *" }]
+}
